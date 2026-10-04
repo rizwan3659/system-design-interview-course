@@ -184,7 +184,7 @@ SHARED.story=(el,api)=>{const F=[['what','What it did, in one sentence','A to-do
 
 /* ---------- class clock (per session) ---------- */
 let clk={sid:null,s:0,run:false,id:null,blocks:[]};
-function clockFor(ses){if(clk.sid===ses.id)return;clearInterval(clk.id);let acc=0;clk={sid:ses.id,s:store.get('clock:'+ses.id,0),run:false,id:null,blocks:ses.modules.map((m,i)=>{const b=[acc*60,(acc+m.mins)*60,m.title,i];acc+=m.mins;return b})};
+function clockFor(ses){if(clk.sid===ses.id)return;clearInterval(clk.id);let acc=0;clk={sid:ses.id,s:store.get('clock:'+ses.id,0),run:false,id:null,blocks:ses.modules.filter(m=>!m.selfStudy).map((m,i)=>{const b=[acc*60,(acc+m.mins)*60,m.title,i];acc+=m.mins;return b})};
   $('#clockBar').innerHTML=clk.blocks.map(b=>`<span style="flex:${b[1]-b[0]}"><i></i></span>`).join('');$('#clockGo').textContent=clk.s>0?'Resume':'Start class';drawClock()}
 function drawClock(){if(!clk.sid)return;const T=clk.blocks.length?clk.blocks[clk.blocks.length-1][1]:7200,s=clk.s;$('#clockTime').textContent=fmtH(s);
   const bi=clk.blocks.findIndex(b=>s>=b[0]&&s<b[1]);const started=s>0||clk.run;
@@ -217,11 +217,11 @@ function hub(){const app=$('#app');const done=doneSet();const next=S.find(s=>!do
 
 function sessionView(ses,mi){const app=$('#app');mi=Math.max(0,Math.min(ses.modules.length-1,mi||0));$('#clock').hidden=false;$('#homeBtn').hidden=false;clockFor(ses);
   $('#brandEye').textContent=`Session ${String(ses.n).padStart(2,'0')} · ${hoursOf(ses)} · Part ${ses.part}`;
-  let acc=0;const starts=ses.modules.map(m=>{const s=acc;acc+=m.mins;return s});
-  $('#modTabs').innerHTML=ses.modules.map((m,i)=>`<button class="tab" role="tab" data-m="${i}" aria-selected="${i===mi}"><small>${hm(starts[i])}</small>${m.tab||m.title}</button>`).join('');
+  let acc=0;const starts=ses.modules.map(m=>{const s=acc;if(!m.selfStudy)acc+=m.mins;return s});
+  $('#modTabs').innerHTML=ses.modules.map((m,i)=>`<button class="tab" role="tab" data-m="${i}" aria-selected="${i===mi}"><small>${m.selfStudy?'extra':hm(starts[i])}</small>${m.tab||m.title}</button>`).join('');
   const m=ses.modules[mi];const mod=node('section','mod');
-  mod.innerHTML=`<div class="mod-head"><div class="crumb"><span class="eyebrow">Module ${mi+1} of ${ses.modules.length} · ${hm(starts[mi])} – ${hm(starts[mi]+m.mins)} · ${m.mins} min</span>${trackTag(ses)}</div><h2>${m.title}</h2>${m.lead?`<p class="lead">${m.lead}</p>`:''}</div>`;
-  if(mi===0){const ag=node('div','grid2');ag.innerHTML=`<div class="panel"><h3>Session ${ses.n}: ${ses.title}</h3><p class="intro">${ses.goal}</p><h4>By the end, students can</h4><ul class="clean">${ses.outcomes.map(o=>`<li>${o}</li>`).join('')}</ul></div><div class="panel"><h3>Session plan</h3><div>${ses.modules.map((x,i)=>`<div class="agenda-row" data-b="${i}"><span class="t">${hm(starts[i])} – ${hm(starts[i]+x.mins)}</span><div><h4>${x.title}</h4>${x.out?`<p class="muted small"><b>Output:</b> ${x.out}</p>`:''}</div></div>`).join('')}</div></div>`;mod.appendChild(ag)}
+  mod.innerHTML=`<div class="mod-head"><div class="crumb"><span class="eyebrow">Module ${mi+1} of ${ses.modules.length} · ${m.selfStudy?`Self-study after class · about ${m.mins} min`:`${hm(starts[mi])} – ${hm(starts[mi]+m.mins)} · ${m.mins} min`}</span>${trackTag(ses)}</div><h2>${m.title}</h2>${m.lead?`<p class="lead">${m.lead}</p>`:''}</div>`;
+  if(mi===0){const ag=node('div','grid2');ag.innerHTML=`<div class="panel"><h3>Session ${ses.n}: ${ses.title}</h3><p class="intro">${ses.goal}</p><h4>By the end, students can</h4><ul class="clean">${ses.outcomes.map(o=>`<li>${o}</li>`).join('')}</ul></div><div class="panel"><h3>Session plan</h3><div>${ses.modules.map((x,i)=>`<div class="agenda-row" data-b="${i}"><span class="t">${x.selfStudy?'Self-study':`${hm(starts[i])} – ${hm(starts[i]+x.mins)}`}</span><div><h4>${x.title}</h4>${x.out?`<p class="muted small"><b>Output:</b> ${x.out}</p>`:''}</div></div>`).join('')}</div></div>`;mod.appendChild(ag)}
   renderBlocks(m.blocks,mod,ses.id+'.m'+mi,ses,false);
   const last=mi===ses.modules.length-1,idx=S.indexOf(ses),nx=S[idx+1],pv=S[idx-1],done=doneSet();
   const foot=node('div','navfoot');
