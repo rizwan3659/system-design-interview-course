@@ -8,16 +8,27 @@ Everything runs in the browser. There is no build step and no backend.
 
 ## How each session runs
 
-Every session is a 2-hour class with:
+The course is a learning lab: students predict, calculate, experiment, debug and answer rather than scroll. Every important concept follows one loop:
+
+**Learn → Visualize → Predict → Design → Experiment → Debug → Interview → Check**
+
+A strip under the module tabs shows which of these steps the current module contains; click a step to jump to it. Every architecture change answers four questions: *What problem do we have? Why does the current design fail? What component could solve it? What new problems does it introduce?*
+
+Every 2-hour session has:
 
 - a **class clock** that shows which module should be on screen
-- short **concept modules** with clickable cards and quick quizzes
-- a hands-on **lab**: architecture labs where you add parts and break things, plus simulators for caching, consistent hashing, quorums, queues, rate limiting, geo search, elevator scheduling, LRU caches and more
-- a **guided interview problem** with think timers and model answers
-- a **review**: flashcards, exit quiz, rubric and homework
+- **session tasks** (e.g. "4 / 6 tasks completed"); some tick themselves when you finish the matching lab
+- **progressive diagrams** that add one component per stage, with a "predict what happens next" question before each reveal
+- **labs**: a traffic-driven scaling lab (with failure injection), plus cache, queue/backpressure, sharding, replication/failover, rate-limiter, consistency, capacity-estimation and latency-intuition labs, alongside the original simulators
+- **bottleneck and debugging scenarios** with metrics panels and "why or why not" explanations for every option
+- **hints before solutions**, and **design-it-yourself** builders compared against a reference architecture
+- an **interview checkpoint**: answer in your own words first, then compare with a structured approach
+- **active-recall cards** and a **session summary** ("Can you explain this without notes?") that feed spaced revision
 - **teacher notes** at the end of each module
 
-Progress, quiz answers and notes are saved in each student's own browser (localStorage). Nothing is sent anywhere.
+Course-wide pages: **Labs** (filter by 🟢 Foundation / 🟡 Intermediate / 🔴 Interview), **Case studies** (7 extra self-paced systems: YouTube, notification service, Google Drive, ticket booking, autocomplete, web crawler, payments), **Interview practice**, **Revision** (Leitner spaced repetition: 1, 3, 7, 16, 35 days) and **Progress** (completion counts and concept mastery).
+
+Progress, answers and notes are saved in each student's own browser (localStorage), and can be exported or imported as JSON from the Progress page. Nothing is sent anywhere.
 
 ## Sessions
 
@@ -71,10 +82,41 @@ Then open http://localhost:8000. Opening `index.html` directly from disk also wo
 
 ## Project structure
 
+Plain HTML, CSS and JavaScript: no build step and no framework. The block-registry architecture already worked as a component model, so the learning-lab features extend it instead of replacing it.
+
 | Path | What it is |
 |---|---|
-| `index.html` | Page shell and styles |
-| `engine.js` | Renders sessions and all interactive blocks (quizzes, steppers, timers, architecture labs, UML diagrams, code blocks) |
-| `sessions/sNN.js` | One file per session: modules, content and session-specific labs |
+| `index.html` | Page shell, colour tokens and base styles |
+| `css/lab.css` | Styles for the learning-lab components |
+| `engine.js` | Router, class clock, hub and session views, and the original block renderers (quizzes, steppers, timers, architecture labs, UML, code) |
+| `js/core.js` | Shared `SDC` namespace: storage, view-scoped timers, events, block registry, levels, concepts, activity log, spaced-repetition store |
+| `js/models.js` | Pure, deterministic models behind the labs (scaling, sharding, rate limiting, queues, consistency, SRS, mastery). No DOM; unit-tested with Node |
+| `js/diagram.js` | Grid-layout SVG diagram renderer, plus the `diagram` (step-through) and `evolve` (progressive architecture) blocks |
+| `js/components/*.js` | One file per component: `predict` (prediction, bottleneck, debugging, hints, metrics), `decide` (decision and comparison labs), `interview` (checkpoint), `recall` (recall cards, summary), `tasks`, `capacity`, `latency`, `scalelab`, `cachesim`, `queuesim`, `shardsim`, `replsim`, `ratelimit`, `consistency`, `builder`, `lld` (HLD→LLD map, staged LLD coding labs) |
+| `js/pages.js` | Labs, Case studies, Interview, Revision and Progress pages |
+| `sessions/sNN.js` | One file per session: modules, blocks, tasks and session-specific labs |
+| `cases/*.js` | Self-paced interactive case studies |
+| `tests/*.test.js` | `models.test.js` (simulation maths) and `content.test.js` (every block type, id, diagram edge and task link) |
 
-To add or edit a session, change its file in `sessions/`. Module durations in a session add up to 120 minutes.
+### Adding content
+
+A session module is a list of blocks: `{t:'<type>', ...}`. Diagram nodes use a compact grid syntax, `'id@col,row:Label|subtitle'`, and edges use `'a>b:label'` (`~>` dashed, `<>` both ways). Examples:
+
+```js
+{t:'predict', title:'What happens next?', scenario:'…', metrics:[['DB CPU','92%','bad']], q:'What first?',
+ opts:[['Add a cache',1,'Why it works'], ['Shard now',0,'Why not yet']]}
+{t:'scalelab', id:'s04scale', model:{readFrac:0.95, hitRate:0.9}, goal:10000, allow:['api','lb','cache','replicas']}
+{t:'evolve', stages:[{label:'Day one', nodes:['client@0,1','api@1,1','db@2,1'], edges:['client>api','api>db'], problem:'…', fix:'…'}, …]}
+```
+
+Give a block an `id` and reference it from a session task with `auto:'<id>'` so the task ticks itself when the block is completed. Set `level:'f'|'i'|'x'` to override the default challenge level and `concept:'caching'` to feed concept mastery. Class modules in a session add up to 120 minutes.
+
+## Tests
+
+```bash
+node tests/models.test.js
+```
+
+```bash
+node tests/content.test.js
+```

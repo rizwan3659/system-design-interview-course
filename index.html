@@ -253,8 +253,10 @@ html,body{margin:0}
 [hidden]{display:none!important}
 img{max-width:100%}
 </style>
+<link rel="stylesheet" href="css/lab.css">
 </head>
 <body>
+<a class="skip" href="#app">Skip to content</a>
 
 <header class="top">
   <div class="wrap">
@@ -267,13 +269,33 @@ img{max-width:100%}
       </div>
       <div class="row"><a class="btn" href="#home" id="homeBtn" hidden>All sessions</a><button class="btn" id="bigText" aria-pressed="false" title="Larger text for a projector">Projector text</button></div>
     </div>
+    <nav class="sitenav" id="siteNav" aria-label="Course sections"><a href="#home" data-nav="home">Course</a><a href="#labs" data-nav="labs">Labs</a><a href="#cases" data-nav="cases">Case studies</a><a href="#interview" data-nav="interview">Interview</a><a href="#revision" data-nav="revision">Revision <span class="badge" id="dueBadge" hidden>0</span></a><a href="#progress" data-nav="progress">Progress</a></nav>
     <div class="bar" id="clockBar" aria-hidden="true"></div>
     <nav class="tabs" id="modTabs" role="tablist" aria-label="Session modules"></nav>
+    <div class="phasebar" id="phaseBar" hidden></div>
   </div>
 </header>
-<main class="wrap" id="app"></main>
+<main class="wrap" id="app" tabindex="-1"></main>
 
-<script>window.COURSE={sessions:[],add:function(s){this.sessions.push(s)}};</script>
+<script src="js/core.js"></script>
+<script src="js/models.js"></script>
+<script src="js/diagram.js"></script>
+<script src="js/components/predict.js"></script>
+<script src="js/components/decide.js"></script>
+<script src="js/components/interview.js"></script>
+<script src="js/components/recall.js"></script>
+<script src="js/components/tasks.js"></script>
+<script src="js/components/capacity.js"></script>
+<script src="js/components/latency.js"></script>
+<script src="js/components/scalelab.js"></script>
+<script src="js/components/cachesim.js"></script>
+<script src="js/components/queuesim.js"></script>
+<script src="js/components/shardsim.js"></script>
+<script src="js/components/replsim.js"></script>
+<script src="js/components/ratelimit.js"></script>
+<script src="js/components/consistency.js"></script>
+<script src="js/components/builder.js"></script>
+<script src="js/components/lld.js"></script>
 <script src="sessions/s01.js"></script>
 <script src="sessions/s02.js"></script>
 <script src="sessions/s03.js"></script>
@@ -294,6 +316,9 @@ img{max-width:100%}
 <script src="sessions/s18.js"></script>
 <script src="sessions/s19.js"></script>
 <script src="sessions/s20.js"></script>
+<script src="cases/cases-a.js"></script>
+<script src="cases/cases-b.js"></script>
+<script src="js/pages.js"></script>
 <script src="engine.js"></script>
 </body>
 </html>

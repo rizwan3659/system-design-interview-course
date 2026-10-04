@@ -2,6 +2,8 @@ COURSE.add({id:'s18',n:18,part:'C',track:'LLD',
 title:'LLD case study: elevator system',
 goal:'Design a multi-elevator controller: requests, scheduling algorithms, dispatching between cars, states and failure handling.',
 outcomes:['Separate hall calls, car calls, dispatching and per-car scheduling','Compare FCFS, nearest-first, SCAN and LOOK with numbers','Write an elevator that serves stops in LOOK order','Model states (idle, moving, maintenance) and extend safely'],
+concept:'lld',
+tasks:[{t:'Complete the elevator LLD lab.',auto:'s18lab'},{t:'Explain why the elevator is modelled as a state machine.'},{t:'Answer the elevator interview checkpoint.',auto:'s18cp'},{t:'Rate yourself: can you compare scheduling algorithms without notes?',auto:'s18sum'}],
 modules:[
 {title:'Warm-up',tab:'Warm-up',mins:10,out:'Recall quiz',blocks:[
  {t:'mcq',items:[
@@ -132,12 +134,49 @@ class ElevatorController:
   {q:'"Fire alarm: all cars go to the ground floor and stop."',a:'Controller broadcasts an emergency event (Observer); each car switches to a FireMode state that clears stops, goes to floor 0, opens doors, ignores calls.'},
   {q:'"Weight limit: do not stop for hall calls when full."',a:'Car tracks load from a sensor; dispatcher\'s cost function treats full cars as unavailable for hall calls; car still serves car calls.'},
   {q:'"Floors 0–7 served by cars A, B; 8–15 by C, D at peak."',a:'A ZoningDispatch strategy. Switch strategies by time of day: no change to Elevator.'},
-  {q:'"Show the car position on every floor display."',a:'Observer: each car publishes floor changes; displays subscribe.'}]}]},
+  {q:'"Show the car position on every floor display."',a:'Observer: each car publishes floor changes; displays subscribe.'}]},
+ {t:'lldlab',id:'s18lab',title:'LLD lab · A single elevator car',level:'x',concept:'lld',intro:'Work through each stage. Write your own answer before revealing the solution.',stages:[{k:'Requirements',prompt:'Design one elevator car that serves requests.',hint:'Internal buttons vs hall calls? Direction rules? Doors?',solution:'Floor requests from inside and hall calls (up/down) from outside; the car keeps moving in its current direction while requests remain that way (SCAN/LOOK); doors open at requested floors; states: idle, moving up, moving down, doors open.'},{k:'Identify objects',prompt:'List the classes (nouns) you need.',hint:'What are the moving parts?',solution:'<b>Elevator</b> (current floor, direction, state), <b>Request</b> (floor, direction), <b>Direction</b>/<b>State</b> enums, <b>Scheduler</b> (strategy for multi-car dispatch), <b>Controller</b>.'},{k:'Responsibilities',prompt:'For each class: what does it own, what does it do, who does it talk to?',hint:'Who decides the next stop?',solution:'The Elevator keeps two sorted sets of stops (above and below) and moves one floor per step (LOOK). A Dispatcher (strategy) chooses which car gets a hall call when there are several cars.'},{k:'Interface',prompt:'Write the public methods (names, inputs, outputs) before any implementation.',hint:'API.',solution:'<code>request(floor)</code>, <code>step() → event</code> (advance one tick: move a floor or open doors), <code>state</code>, <code>floor</code>.'},{k:'Implementation',prompt:'Implement the core in Python.',code:true,lang:'python',starter:`class Elevator:
+    def __init__(self, floors, start=0):
+        ...
+    def request(self, floor):
+        ...
+    def step(self):
+        ...
+`,solution:`class Elevator:
+    def __init__(self, floors, start=0):
+        self.floors, self.floor = floors, start
+        self.up, self.down = set(), set()
+        self.dir = 0                          # 1 up, -1 down, 0 idle
+        self.log = []
+
+    def request(self, floor):
+        if not 0 <= floor < self.floors:
+            raise ValueError("no such floor")
+        if floor > self.floor: self.up.add(floor)
+        elif floor < self.floor: self.down.add(floor)
+        else: self.log.append(("open", floor))
+
+    def step(self):
+        if self.dir == 0:                     # idle: pick the nearer side
+            if not self.up and not self.down:
+                return None
+            self.dir = 1 if self.up and (not self.down or min(self.up) - self.floor <= self.floor - max(self.down)) else -1
+        self.floor += self.dir
+        stops = self.up if self.dir == 1 else self.down
+        if self.floor in stops:
+            stops.discard(self.floor)
+            self.log.append(("open", self.floor))
+        if not stops:                          # LOOK: reverse only when nothing ahead
+            self.dir = -1 if self.dir == 1 and self.down else 1 if self.dir == -1 and self.up else 0
+        return self.floor`},{k:'Edge cases',prompt:'What inputs or situations could break it?',hint:'Think about empty, full, duplicate, concurrent and invalid inputs.',solution:'A request for the current floor; requests above and below while moving (do not reverse early); an invalid floor; door held open; overload sensor; emergency stop; power loss (return to ground floor).'},{k:'Tests',prompt:'Write the test cases you would run (input → expected).',hint:'One happy path, one per edge case.',solution:'start 0, request 5 and 2 → stops 2 then 5; at floor 5 moving up with requests 7 and 1 → 7 then 1; request current floor → doors open, no move; request floor 99 in 10-floor building → ValueError; no requests → step() returns None.'}]}]},
 
 {title:'Score and review',tab:'Review',mins:15,out:'Rubric + homework',blocks:[
  {t:'flash',items:[['Dispatching vs scheduling?','Which car answers vs in what order one car visits its stops.'],['LOOK?','Serve stops in the current direction until none remain ahead, then reverse.'],['SCAN vs LOOK?','SCAN goes to the end of the building before reversing; LOOK turns at the last request.'],['Why can nearest-first starve?','Nearby requests keep winning; far floors wait indefinitely.'],['Maintenance mode?','Re-dispatch hall calls, finish current move, ignore new calls.']]},
  {t:'rubric',title:'LLD rubric',rows:[['Requirements','Hall vs car calls, goals, modes'],['Entities','Controller, Elevator, strategies, states'],['Patterns','Strategy for dispatch, State for modes'],['Code','LOOK step() correct; dispatcher skips maintenance'],['Extension','Fire mode/zoning added without rewrites']]},
- {t:'task',title:'Homework',items:['Write a FireMode state class and the controller method that activates it for all cars.']}]}
+ {t:'task',title:'Homework',items:['Write a FireMode state class and the controller method that activates it for all cars.']},
+ {t:'checkpoint',id:'s18cp',title:'Interview checkpoint',prompt:'"Design an elevator system for a 40-floor building with 6 cars."',steps:['Clarify cars, floors, request types, peak patterns, failure modes','Classes: Building, Elevator, Request, Dispatcher, Door, Display','Model each car as a state machine','Single-car algorithm (LOOK) and why not FCFS','Dispatch strategy across cars (nearest suitable, zoning at peak)','Interfaces for request and step/tick','Concurrency: many hall calls at once','Failures: car out of service, overload, emergency'],model:'Each Elevator runs LOOK over its stop sets; a Dispatcher (strategy) assigns hall calls to the car with the lowest estimated arrival time considering direction; zoning in the morning peak. Out-of-service cars are excluded and their calls reassigned.',followups:[['"Morning rush: everyone goes up from the lobby."','Zone cars to floor ranges and return idle cars to the lobby.'],['"A car breaks down."','Mark it out of service; reassign its hall calls; inside calls are served by rescue procedures.']]},
+ {t:'recall',title:'Active recall',items:[['Why model a car as a state machine?','Valid transitions are explicit (idle → moving → doors open), and invalid ones (move with doors open) are impossible.'],['LOOK vs FCFS?','LOOK keeps going one way while requests remain that way, cutting travel; FCFS zig-zags.'],['Where does the dispatch strategy live?','In a Dispatcher (strategy), separate from the car’s movement logic.'],['What happens on a request for the current floor?','Open the doors; no movement.'],['One failure to plan for?','Car out of service, overload, power loss, stuck door.']]},
+ {t:'summary',id:'s18sum',title:'Session summary',learned:['<b>Why state machines:</b> explicit, testable transitions','<b>When to use LOOK:</b> single-car scheduling','<b>When to dispatch differently:</b> peak hours, zoning','<b>Trade-offs:</b> wait time vs travel vs energy','<b>Interview questions:</b> dispatch, states, failures, concurrency'],explain:'Explain how one car chooses its next stop and how a dispatcher picks a car.'}]}
 ],
 labs:{
  lift(el,api){

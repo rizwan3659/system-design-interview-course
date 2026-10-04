@@ -1,8 +1,6 @@
 (function(){
 'use strict';
-const $=(s,r)=>(r||document).querySelector(s), $$=(s,r)=>Array.from((r||document).querySelectorAll(s));
-const store={get(k,d){try{const v=localStorage.getItem('sdc:'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('sdc:'+k,JSON.stringify(v))}catch(e){}}};
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const {$,$$,store,esc,node}=SDC;
 const fmt=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
 const fmtH=s=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')};
 const hm=min=>Math.floor(min/60)+':'+String(min%60).padStart(2,'0');
@@ -15,9 +13,7 @@ const PARTS=[
 const sid=n=>'s'+String(n).padStart(2,'0');
 
 /* ---------- live timers (cleared on every route change) ---------- */
-let live=[];
-const every=(fn,ms)=>{const id=setInterval(fn,ms);live.push(id);return id};
-const killAll=()=>{live.forEach(clearInterval);live=[]};
+const every=SDC.every,killAll=SDC.killAll;
 
 /* ---------- global delegated handlers ---------- */
 document.addEventListener('click',e=>{
@@ -32,7 +28,6 @@ document.addEventListener('click',e=>{
 /* ---------- helpers ---------- */
 const tableHTML=(head,rows)=>`<div class="tbl"><table>${head?`<thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead>`:''}<tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 const codeHTML=(c,l)=>`<div class="codebox"><div class="codebar"><span>${esc(l||'python')}</span><button class="btn small" data-copy>Copy</button></div><pre><code>${esc(String(c).replace(/^\n/,'').replace(/\s+$/,''))}</code></pre></div>`;
-const node=(tag,cls,html)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(html!=null)d.innerHTML=html;return d};
 
 /* ---------- block renderers ---------- */
 const R={};
@@ -46,14 +41,15 @@ R.cards=(b,p)=>{let sel=0;const row=node('div','loop'),det=node('div','think');p
   const draw=()=>{row.innerHTML=b.items.map((s,i)=>`<button aria-pressed="${i===sel}" data-i="${i}"><span class="loop-num">${s.tag||('Step '+(i+1))}</span><b>${s.title}</b>${s.sub?`<span>${s.sub}</span>`:''}</button>`).join('');det.innerHTML=b.items[sel].body};
   row.addEventListener('click',e=>{const x=e.target.closest('button');if(!x)return;sel=+x.dataset.i;draw()});draw()};
 
-function quiz(b,p,key,optsOf,okWord){let ans=store.get(key,{});const top=node('div','row','<span class="score"></span><button class="btn small">Reset</button>'),g=node('div',b.cols===3?'grid3':'grid2');p.append(top,g);
+function quiz(b,p,key,optsOf,okWord,ses){let ans=store.get(key,{});const top=node('div','row','<span class="score"></span><button class="btn small">Reset</button>'),g=node('div',b.cols===3?'grid3':'grid2');p.append(top,g);
   const draw=()=>{let r=0,d=0;g.innerHTML=b.items.map((x,i)=>{const a=ans[i],O=optsOf(x);let c='',fb='';if(a!==undefined){d++;const ok=a===x.a;if(ok)r++;c=ok?'right':'wrong';fb=`<p class="fb"><span class="tag ${ok?'green':'red'}">${ok?okWord:'Not quite'}</span> <b>${O[x.a]}.</b> ${x.why||''}</p>`}
     return `<div class="qcard ${c}"><div>${x.q}</div><div class="acts">${O.map((l,j)=>`<button class="btn small" data-i="${i}" data-j="${j}" aria-pressed="${a===j}">${l}</button>`).join('')}</div>${fb}</div>`}).join('');
     top.firstChild.textContent=`${r} / ${d} correct`+(d===b.items.length?' · all answered':` · ${b.items.length-d} left`)};
-  g.addEventListener('click',e=>{const x=e.target.closest('[data-j]');if(!x)return;ans[x.dataset.i]=+x.dataset.j;store.set(key,ans);draw()});
+  g.addEventListener('click',e=>{const x=e.target.closest('[data-j]');if(!x)return;ans[x.dataset.i]=+x.dataset.j;store.set(key,ans);
+    if(ses)SDC.act.record(key+'.'+x.dataset.i,{t:'quiz',s:ses.id,c:b.concept||ses.concept||'interview',score:ans[x.dataset.i]===b.items[x.dataset.i].a?1:0});draw()});
   top.lastChild.addEventListener('click',()=>{ans={};store.set(key,ans);draw()});draw()}
-R.sort=(b,p,key)=>quiz(b,p,key,()=>b.labels||['Ask it','Skip it'],'Correct');
-R.mcq=(b,p,key)=>quiz(b,p,key,x=>x.opts,'Correct');
+R.sort=(b,p,key,ses)=>quiz(b,p,key,()=>b.labels||['Ask it','Skip it'],'Correct',ses);
+R.mcq=(b,p,key,ses)=>quiz(b,p,key,x=>x.opts,'Correct',ses);
 
 R.reveal=(b,p)=>p.insertAdjacentHTML('beforeend',`<div class="${b.cols===2?'grid2':'grid3'}">${b.items.map(i=>`<div class="optcard"><div>${i.q}</div><button class="btn small" data-reveal>Reveal</button><div class="answer" hidden>${i.a}${i.code?codeHTML(i.code,i.lang):''}</div></div>`).join('')}</div>`);
 
@@ -146,8 +142,13 @@ R.lab=(b,p,key,ses)=>{const fn=(ses.labs&&ses.labs[b.fn])||SHARED[b.fn];const c=
 
 function renderBlocks(blocks,container,kp,ses,nested){blocks.forEach((b,i)=>{const key=kp+'.'+i;
   if(b.t==='teacher'){container.appendChild(node('details','teacher',`<summary>${b.title||'Teacher notes'}</summary><ul class="clean">${b.items.map(x=>`<li>${x}</li>`).join('')}</ul>`));return}
-  const pnl=node('div','panel'+(nested?' nested':''),(b.title?`<h3>${b.title}</h3>`:'')+(b.intro?`<p class="intro">${b.intro}</p>`:''));container.appendChild(pnl);
+  const lvl=SDC.levelOf(b),lv=lvl?`<div class="blk-meta">${SDC.levelHTML(lvl)}</div>`:'';
+  const pnl=node('div','panel'+(nested?' nested':''),lv+(b.title?`<h3>${b.title}</h3>`:'')+(b.intro?`<p class="intro">${b.intro}</p>`:''));container.appendChild(pnl);
+  pnl.id='blk-'+key.replace(/\./g,'_');pnl.dataset.phase=SDC.phaseOf(b);if(lvl)pnl.dataset.level=lvl;
+  if(SDC.kindOf(b)==='lab'&&(b.t==='lab'||b.t==='arch')){const mark=()=>{if(!SDC.act.get(key))SDC.act.record(key,{t:b.t,s:ses.id,c:b.concept||ses.concept||'interview',id:b.id||null,score:null,explored:true})};
+    pnl.addEventListener('input',mark,{once:true});pnl.addEventListener('click',e=>{if(e.target.closest('button,select,input'))mark()})}
   if(R[b.t])R[b.t](b,pnl,key,ses);else pnl.insertAdjacentHTML('beforeend','<p>Unknown block: '+esc(b.t)+'</p>')})}
+SDC.renderBlocks=renderBlocks;SDC.tableHTML=tableHTML;SDC.codeHTML=codeHTML;
 
 /* ---------- shared labs ---------- */
 const SHARED={};
@@ -199,41 +200,77 @@ $('#clockReset').addEventListener('click',()=>{clk.run=false;clearInterval(clk.i
 const big=$('#bigText');const setBig=v=>{document.documentElement.classList.toggle('big',v);big.setAttribute('aria-pressed',String(v));store.set('big',v)};
 big.addEventListener('click',()=>setBig(big.getAttribute('aria-pressed')!=='true'));setBig(store.get('big',false));
 
+/* ---------- component blocks and labs registered by js/components/*.js ---------- */
+Object.keys(COURSE.blocks).forEach(k=>{if(!R[k])R[k]=COURSE.blocks[k]});Object.assign(SHARED,COURSE.labs);
+
 /* ---------- views ---------- */
 const doneSet=()=>new Set(store.get('done',[]));
 const hoursOf=s=>`Hours ${s.n*2-1}–${s.n*2}`;
 const trackTag=s=>s.track==='LLD'?'<span class="tag lld">LLD</span>':s.track==='Both'?'<span class="tag green">HLD + LLD</span>':'<span class="tag">HLD</span>';
+const CASES=COURSE.cases;SDC.sessions=S;
+const findSes=id=>S.find(s=>s.id===id)||CASES.find(c=>c.id===id);
+let cur=null;
+
+function setNav(k){$$('#siteNav a').forEach(a=>a.setAttribute('aria-current',a.dataset.nav===k?'page':'false'));const n=SDC.srs.due().length,b=$('#dueBadge');b.textContent=n;b.hidden=!n}
+function leaveSession(){cur=null;if(clk.sid){clearInterval(clk.id);clk={sid:null,s:0,run:false,id:null,blocks:[]}}
+  $('#clock').hidden=true;$('#homeBtn').hidden=true;$('#clockBar').innerHTML='';$('#modTabs').innerHTML='';$('#phaseBar').hidden=true;$('#phaseBar').innerHTML='';$('#brandEye').textContent='40 hours · HLD + LLD · interview prep'}
+const hdr=()=>document.documentElement.style.setProperty('--hdr',($('.top').offsetHeight+12)+'px');
+window.addEventListener('resize',hdr);
 
 function hub(){const app=$('#app');const done=doneSet();const next=S.find(s=>!done.has(s.id))||S[0];
-  $('#clock').hidden=true;$('#homeBtn').hidden=true;$('#clockBar').innerHTML='';$('#modTabs').innerHTML='';$('#brandEye').textContent='40 hours · HLD + LLD · interview prep';
+  setNav('home');const st=SDC.stats();
   const cnt=t=>S.filter(s=>s.track===t).length;
   app.innerHTML=`<div class="mod">
-   <section class="hero"><div class="col" style="gap:10px"><span class="eyebrow">Course map · 20 sessions × 2 hours</span><h2>From a vague prompt to a defended design, in 40 hours</h2><p class="lead muted" style="font-size:1.06rem;max-width:62ch">Every session runs like a real class: a timed plan, short concept modules, a hands-on lab, a guided interview problem, and a review. Teacher notes sit at the end of each module.</p>
+   <section class="hero"><div class="col" style="gap:10px"><span class="eyebrow">Course map · 20 sessions × 2 hours</span><h2>From a vague prompt to a defended design, in 40 hours</h2><p class="lead muted" style="font-size:1.06rem;max-width:62ch">A system design learning lab. In every session you predict what breaks, run the experiment, debug it, answer as if an interviewer is listening, and check what stuck. Teacher notes sit at the end of each module.</p>
      <div class="row"><a class="btn primary" href="#${next.id}">${done.size?'Continue':'Start'}: Session ${next.n}</a><span class="muted small">${done.size} of ${S.length} sessions complete</span></div></div>
-     <div class="col" style="gap:12px"><div class="stats"><div><b>${cnt('HLD')*2}h</b><span>High-level design</span></div><div><b>${cnt('LLD')*2}h</b><span>Low-level design</span></div><div><b>${cnt('Both')*2}h</b><span>Capstone mocks</span></div></div><div class="meter" aria-label="Course progress"><i style="width:${done.size/S.length*100}%"></i></div></div></section>
-   <div class="panel"><h3>How every session runs</h3>${tableHTML(['Part of the session','What happens','Typical time'],[['Plan + warm-up','Session goals, a recall quiz from last time','10–15 min'],['Concept modules','Short teaching, clickable concept cards, quick quizzes','30–45 min'],['Lab','Interactive simulator or architecture lab: change inputs, break things','15–25 min'],['Guided problem','Interview-style stepper with think timers and model answers','25–35 min'],['Review','Flashcards, exit quiz, homework, teacher notes','10–15 min']])}<p class="muted small">Use the class clock in the header during a session; the module that should be on screen is underlined. Progress, quiz answers and notes are saved in this browser only.</p></div>
-   ${PARTS.map(P=>{const list=S.filter(s=>s.part===P.k);if(!list.length)return'';return `<section class="part"><div class="part-head"><h3>Part ${P.k} · ${P.name}</h3><span class="mono">${hoursOf(list[0]).replace(/–\d+$/,'')}–${list[list.length-1].n*2} · ${list.length} sessions</span></div><p class="muted small" style="max-width:70ch">${P.desc}</p><div class="sgrid">${list.map(s=>`<a class="scard ${done.has(s.id)?'done':''}" href="#${s.id}"><span class="num"><span>Session ${String(s.n).padStart(2,'0')} · ${hoursOf(s)}</span>${done.has(s.id)?'<b>Done</b>':trackTag(s)}</span><h4>${s.title}</h4><p>${s.goal}</p></a>`).join('')}</div></section>`}).join('')}
-  </div>`}
+     <div class="col" style="gap:12px"><div class="stats"><div><b>${cnt('HLD')*2}h</b><span>High-level design</span></div><div><b>${cnt('LLD')*2}h</b><span>Low-level design</span></div><div><b>${cnt('Both')*2}h</b><span>Capstone mocks</span></div></div><div class="meter" role="progressbar" aria-label="Course progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(st.overall*100)}"><i style="width:${st.overall*100}%"></i></div><span class="small muted">Course progress ${Math.round(st.overall*100)}%</span></div></section>
+   <nav class="hubcards" aria-label="Learning lab">
+     <a class="hubcard" href="#labs"><span class="eyebrow">Experiment</span><b>Labs</b><span>${st.labs.done} / ${st.labs.total} completed</span></a>
+     <a class="hubcard" href="#cases"><span class="eyebrow">Design</span><b>Case studies</b><span>${CASES.length+st.caseSessions} interactive systems</span></a>
+     <a class="hubcard" href="#interview"><span class="eyebrow">Interview</span><b>Interview practice</b><span>${st.interview.done} / ${st.interview.total} problems</span></a>
+     <a class="hubcard ${st.due?'due':''}" href="#revision"><span class="eyebrow">Revise</span><b>Revision</b><span>${st.due?st.due+' due today':'Nothing due'}</span></a>
+     <a class="hubcard" href="#progress"><span class="eyebrow">Track</span><b>Progress</b><span>Concept mastery</span></a></nav>
+   <div class="panel"><h3>The learning loop in every session</h3><ol class="loopline">${SDC.PHASES.map(p=>`<li>${p[1]}</li>`).join('')}</ol><p class="muted small">Every architecture change answers four questions: <b>What problem do we have? Why does the current design fail? What component could solve it? What new problems does that component introduce?</b> The strip under the module tabs shows which steps each module contains; click one to jump to it.</p>
+   ${tableHTML(['Part of the session','What happens','Typical time'],[['Plan + warm-up','Session goals, tasks, a recall quiz from last time','10–15 min'],['Concept + diagrams','Short teaching, progressive diagrams, prediction questions','25–30 min'],['Labs','Simulators: change traffic, add components, break things, measure','15–25 min'],['Design + interview','Guided problem, interview checkpoint, design-it-yourself','20–30 min'],['Review','Active recall, session summary, exit quiz','5–10 min']])}<p class="muted small">Use the class clock in the header during a session. Progress, answers and notes are saved in this browser only.</p></div>
+   ${PARTS.map(P=>{const list=S.filter(s=>s.part===P.k);if(!list.length)return'';return `<section class="part"><div class="part-head"><h3>Part ${P.k} · ${P.name}</h3><span class="mono">${hoursOf(list[0]).replace(/–\d+$/,'')}–${list[list.length-1].n*2} · ${list.length} sessions</span></div><p class="muted small" style="max-width:70ch">${P.desc}</p><div class="sgrid">${list.map(s=>{const ts=SDC.taskState(s);return `<a class="scard ${done.has(s.id)?'done':''}" href="#${s.id}"><span class="num"><span>Session ${String(s.n).padStart(2,'0')} · ${hoursOf(s)}</span>${done.has(s.id)?'<b>Done ✓</b>':trackTag(s)}</span><h4>${s.title}</h4><p>${s.goal}</p>${ts.total?`<span class="small muted">Tasks ${ts.done} / ${ts.total}</span><span class="meter thin" aria-hidden="true"><i style="width:${ts.done/ts.total*100}%"></i></span>`:''}</a>`}).join('')}</div></section>`}).join('')}
+  </div>`;hdr()}
 
-function sessionView(ses,mi){const app=$('#app');mi=Math.max(0,Math.min(ses.modules.length-1,mi||0));$('#clock').hidden=false;$('#homeBtn').hidden=false;clockFor(ses);
-  $('#brandEye').textContent=`Session ${String(ses.n).padStart(2,'0')} · ${hoursOf(ses)} · Part ${ses.part}`;
+function phaseBar(ses,m){const pb=$('#phaseBar');const present=new Set();
+  const walk=bl=>bl.forEach(b=>{if(b.t==='teacher')return;present.add(SDC.phaseOf(b));if(b.t==='stepper')b.steps.forEach(x=>x.blocks&&walk(x.blocks))});walk(m.blocks);
+  const ts=SDC.taskState(ses);
+  pb.innerHTML=`<ol class="phases-nav" aria-label="Learning loop steps in this module">${SDC.PHASES.map(([k,l])=>present.has(k)?`<li><button type="button" data-ph="${k}">${l}</button></li>`:`<li><span class="ph-off" title="Not in this module">${l}</span></li>`).join('<li class="ph-sep" aria-hidden="true">→</li>')}</ol>${ts.total?`<a class="taskchip" href="#${ses.id}-m1~tasks" data-taskchip>Tasks ${ts.done} / ${ts.total}</a>`:''}`;pb.hidden=false}
+$('#phaseBar').addEventListener('click',e=>{const b=e.target.closest('[data-ph]');if(!b)return;const el=$(`#app [data-phase="${b.dataset.ph}"]`);if(el){el.scrollIntoView({block:'start',behavior:SDC.reducedMotion()?'auto':'smooth'});el.classList.remove('flash-hi');void el.offsetWidth;el.classList.add('flash-hi');const f=el.querySelector('button,input,select,textarea,summary');if(f)f.focus({preventScroll:true})}});
+SDC.on('tasks',sid=>{const c=$('[data-taskchip]');if(c&&cur&&cur.id===sid){const ts=SDC.taskState(cur);c.textContent=`Tasks ${ts.done} / ${ts.total}`}});
+
+function sessionView(ses,mi){const app=$('#app');const isCase=ses.kind==='case';mi=Math.max(0,Math.min(ses.modules.length-1,mi||0));cur=ses;
+  setNav(isCase?'cases':'home');
+  if(isCase){if(clk.sid){clearInterval(clk.id);clk={sid:null,s:0,run:false,id:null,blocks:[]}}$('#clock').hidden=true;$('#clockBar').innerHTML=''}else{$('#clock').hidden=false;clockFor(ses)}
+  const hb=$('#homeBtn');hb.hidden=false;hb.href=isCase?'#cases':'#home';hb.textContent=isCase?'All case studies':'All sessions';
+  $('#brandEye').textContent=isCase?`Case study · ${ses.title}`:`Session ${String(ses.n).padStart(2,'0')} · ${hoursOf(ses)} · Part ${ses.part}`;
   let acc=0;const starts=ses.modules.map(m=>{const s=acc;if(!m.selfStudy)acc+=m.mins;return s});
-  $('#modTabs').innerHTML=ses.modules.map((m,i)=>`<button class="tab" role="tab" data-m="${i}" aria-selected="${i===mi}"><small>${m.selfStudy?'extra':hm(starts[i])}</small>${m.tab||m.title}</button>`).join('');
-  const m=ses.modules[mi];const mod=node('section','mod');
-  mod.innerHTML=`<div class="mod-head"><div class="crumb"><span class="eyebrow">Module ${mi+1} of ${ses.modules.length} · ${m.selfStudy?`Self-study after class · about ${m.mins} min`:`${hm(starts[mi])} – ${hm(starts[mi]+m.mins)} · ${m.mins} min`}</span>${trackTag(ses)}</div><h2>${m.title}</h2>${m.lead?`<p class="lead">${m.lead}</p>`:''}</div>`;
-  if(mi===0){const ag=node('div','grid2');ag.innerHTML=`<div class="panel"><h3>Session ${ses.n}: ${ses.title}</h3><p class="intro">${ses.goal}</p><h4>By the end, students can</h4><ul class="clean">${ses.outcomes.map(o=>`<li>${o}</li>`).join('')}</ul></div><div class="panel"><h3>Session plan</h3><div>${ses.modules.map((x,i)=>`<div class="agenda-row" data-b="${i}"><span class="t">${x.selfStudy?'Self-study':`${hm(starts[i])} – ${hm(starts[i]+x.mins)}`}</span><div><h4>${x.title}</h4>${x.out?`<p class="muted small"><b>Output:</b> ${x.out}</p>`:''}</div></div>`).join('')}</div></div>`;mod.appendChild(ag)}
+  $('#modTabs').innerHTML=ses.modules.map((m,i)=>`<button class="tab" role="tab" data-m="${i}" aria-selected="${i===mi}"><small>${m.selfStudy?'extra':isCase?'step '+(i+1):hm(starts[i])}</small>${m.tab||m.title}</button>`).join('');
+  const m=ses.modules[mi];const mod=node('section','mod');phaseBar(ses,m);
+  mod.innerHTML=`<div class="mod-head"><div class="crumb"><span class="eyebrow">${isCase?`Step ${mi+1} of ${ses.modules.length} · about ${m.mins} min`:`Module ${mi+1} of ${ses.modules.length} · ${m.selfStudy?`Self-study after class · about ${m.mins} min`:`${hm(starts[mi])} – ${hm(starts[mi]+m.mins)} · ${m.mins} min`}`}</span>${isCase?'<span class="tag green">Case study</span>':trackTag(ses)}</div><h2>${m.title}</h2>${m.lead?`<p class="lead">${m.lead}</p>`:''}</div>`;
+  if(mi===0){const ag=node('div','grid2');ag.innerHTML=`<div class="panel"><h3>${isCase?'':'Session '+ses.n+': '}${ses.title}</h3><p class="intro">${ses.goal}</p><h4>By the end, ${isCase?'you':'students'} can</h4><ul class="clean">${ses.outcomes.map(o=>`<li>${o}</li>`).join('')}</ul></div><div class="panel"><h3>${isCase?'Case study plan':'Session plan'}</h3><div>${ses.modules.map((x,i)=>`<div class="agenda-row" data-b="${i}"><span class="t">${isCase?'~'+x.mins+' min':x.selfStudy?'Self-study':`${hm(starts[i])} – ${hm(starts[i]+x.mins)}`}</span><div><h4>${x.title}</h4>${x.out?`<p class="muted small"><b>Output:</b> ${x.out}</p>`:''}</div></div>`).join('')}</div></div>`;mod.appendChild(ag);
+    const tp=SDC.renderTasks(ses,mod);if(tp)tp.id='blk-tasks'}
   renderBlocks(m.blocks,mod,ses.id+'.m'+mi,ses,false);
-  const last=mi===ses.modules.length-1,idx=S.indexOf(ses),nx=S[idx+1],pv=S[idx-1],done=doneSet();
+  const last=mi===ses.modules.length-1,list=isCase?CASES:S,idx=list.indexOf(ses),nx=list[idx+1],pv=list[idx-1],done=doneSet();
+  if(last&&mi>0&&ses.tasks)SDC.renderTasks(ses,mod);
+  const lbl=x=>isCase?x.title:`Session ${x.n}`;
+  const doneTxt=d=>d?(isCase?'Case study complete ✓':'Session complete ✓'):(isCase?'Mark case study complete':'Mark session complete');
   const foot=node('div','navfoot');
-  foot.innerHTML=`<div class="row">${mi>0?`<a class="btn" href="#${ses.id}-m${mi}">← ${ses.modules[mi-1].tab||ses.modules[mi-1].title}</a>`:pv?`<a class="btn" href="#${pv.id}">← Session ${pv.n}</a>`:''}</div><div class="row">${last?`<button class="btn" data-done aria-pressed="${done.has(ses.id)}">${done.has(ses.id)?'Session complete ✓':'Mark session complete'}</button>${nx?`<a class="btn primary" href="#${nx.id}">Session ${nx.n}: ${nx.title} →</a>`:`<a class="btn primary" href="#home">Back to course map</a>`}`:`<a class="btn primary" href="#${ses.id}-m${mi+2}">${ses.modules[mi+1].tab||ses.modules[mi+1].title} →</a>`}</div>`;
+  foot.innerHTML=`<div class="row">${mi>0?`<a class="btn" href="#${ses.id}-m${mi}">← ${ses.modules[mi-1].tab||ses.modules[mi-1].title}</a>`:pv?`<a class="btn" href="#${pv.id}">← ${lbl(pv)}</a>`:''}</div><div class="row">${last?`<button class="btn" data-done aria-pressed="${done.has(ses.id)}">${doneTxt(done.has(ses.id))}</button>${nx?`<a class="btn primary" href="#${nx.id}">${lbl(nx)}${isCase?'':': '+nx.title} →</a>`:`<a class="btn primary" href="#${isCase?'cases':'home'}">Back to ${isCase?'case studies':'course map'}</a>`}`:`<a class="btn primary" href="#${ses.id}-m${mi+2}">${ses.modules[mi+1].tab||ses.modules[mi+1].title} →</a>`}</div>`;
   mod.appendChild(foot);app.innerHTML='';app.appendChild(mod);
-  const db=$('[data-done]',foot);if(db)db.addEventListener('click',()=>{const d=doneSet();d.has(ses.id)?d.delete(ses.id):d.add(ses.id);store.set('done',[...d]);db.setAttribute('aria-pressed',String(d.has(ses.id)));db.textContent=d.has(ses.id)?'Session complete ✓':'Mark session complete'});
-  drawClock()}
+  const db=$('[data-done]',foot);if(db)db.addEventListener('click',()=>{const d=doneSet();d.has(ses.id)?d.delete(ses.id):d.add(ses.id);store.set('done',[...d]);db.setAttribute('aria-pressed',String(d.has(ses.id)));db.textContent=doneTxt(d.has(ses.id))});
+  if(!isCase)drawClock();hdr()}
 
-$('#modTabs').addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t||!clk.sid)return;location.hash='#'+clk.sid+'-m'+(+t.dataset.m+1)});
+$('#modTabs').addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t||!cur)return;location.hash='#'+cur.id+'-m'+(+t.dataset.m+1)});
 
-function route(){killAll();const h=(location.hash||'').slice(1);const m=h.match(/^(s\d\d)(?:-m(\d+))?$/);
-  if(m){const ses=S.find(s=>s.id===m[1]);if(ses){sessionView(ses,m[2]?(+m[2]-1):0);store.set('last',h);window.scrollTo(0,0);return}}
-  if(clk.sid){clearInterval(clk.id);clk={sid:null,s:0,run:false,id:null,blocks:[]}}hub();window.scrollTo(0,0)}
+function route(){killAll();const h=decodeURIComponent((location.hash||'').slice(1));const m=h.match(/^(s\d\d|case-[a-z]+)(?:-m(\d+))?(?:~([\w-]+))?$/);
+  if(m){const ses=findSes(m[1]);if(ses){sessionView(ses,m[2]?(+m[2]-1):0);store.set('last',h);window.scrollTo(0,0);
+    if(m[3])SDC.later(()=>{const el=document.getElementById('blk-'+m[3]);if(el){el.scrollIntoView({block:'start'});el.classList.add('flash-hi')}},50);return}}
+  leaveSession();
+  if(SDC.pages&&SDC.pages[h]){SDC.pages[h]($('#app'));setNav(h);hdr();window.scrollTo(0,0);return}
+  hub();window.scrollTo(0,0)}
 window.addEventListener('hashchange',route);route();
 })();

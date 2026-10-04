@@ -2,6 +2,8 @@ COURSE.add({id:'s17',n:17,part:'C',track:'LLD',
 title:'LLD case study: parking lot',
 goal:'Run the full LLD loop on the most common LLD prompt: requirements, classes, patterns, working code and extensions.',
 outcomes:['Turn parking-lot requirements into classes with clear owners','Use Strategy for spot allocation and pricing, Factory for vehicles','Write park and leave correctly, including edge cases','Extend the design and discuss thread safety'],
+concept:'lld',
+tasks:[{t:'Complete the parking-lot LLD lab end to end.',auto:'s17lab'},{t:'Explain how you prevent two cars getting the same spot.'},{t:'Answer the parking-lot interview checkpoint.',auto:'s17cp'},{t:'Rate yourself: can you design the parking lot in 30 minutes without notes?',auto:'s17sum'}],
 modules:[
 {title:'Warm-up: patterns recall',tab:'Warm-up',mins:10,out:'Recall quiz',blocks:[
  {t:'mcq',items:[
@@ -167,11 +169,59 @@ class ThreadSafeParkingLot(ParkingLot):
 
     def leave(self, ticket_id, now):
         with self._lock:
-            return super().leave(ticket_id, now)`,note:'Trade-off: one lock is simple but serialises all gates. Per-level locks allow more parallelism but need care to avoid deadlocks.'}]},
+            return super().leave(ticket_id, now)`,note:'Trade-off: one lock is simple but serialises all gates. Per-level locks allow more parallelism but need care to avoid deadlocks.'},
+ {t:'lldlab',id:'s17lab',title:'LLD lab · Parking lot from scratch',level:'x',concept:'lld',intro:'Work through each stage. Write your own answer before revealing the solution.',stages:[{k:'Requirements',prompt:'Design a parking lot. Write the requirements you would agree on.',hint:'Floors? Vehicle types? Spot sizes? Payment? Display?',solution:'Several floors; spot sizes small/medium/large; motorbike, car, truck; a vehicle parks in the smallest spot that fits; ticket on entry, pay on exit by duration; show free spots per floor.'},{k:'Identify objects',prompt:'List the classes (nouns) you need.',hint:'Nouns from the requirements.',solution:'<b>ParkingLot</b>, <b>Floor</b>, <b>Spot</b> (size, occupied), <b>Vehicle</b> (type), <b>Ticket</b>, <b>PricingPolicy</b>, <b>SpotFinder</b> strategy.'},{k:'Responsibilities',prompt:'For each class: what does it own, what does it do, who does it talk to?',hint:'Who owns spots? Who decides which spot? Who prices?',solution:'ParkingLot is the facade and owns floors; Floor owns spots; SpotFinder (strategy) chooses a spot; Ticket records vehicle, spot and entry time; PricingPolicy computes the fee (strategy, varies by vehicle or time of day).'},{k:'Interface',prompt:'Write the public methods (names, inputs, outputs) before any implementation.',hint:'Two use cases: park and leave.',solution:'<code>lot.park(vehicle) → Ticket | None</code>, <code>lot.leave(ticket_id, now) → fee</code>, <code>lot.free_spots() → {floor: {size: n}}</code>.'},{k:'Implementation',prompt:'Implement the core in Python.',code:true,lang:'python',starter:`from enum import IntEnum
+
+class Size(IntEnum):
+    SMALL = 1; MEDIUM = 2; LARGE = 3
+
+class ParkingLot:
+    def __init__(self, floors):
+        ...
+`,solution:`import itertools, threading, math
+from enum import IntEnum
+
+class Size(IntEnum):
+    SMALL = 1; MEDIUM = 2; LARGE = 3
+
+NEEDS = {"bike": Size.SMALL, "car": Size.MEDIUM, "truck": Size.LARGE}
+RATE = {"bike": 10, "car": 20, "truck": 40}      # per started hour
+
+class Spot:
+    def __init__(self, sid, size):
+        self.id, self.size, self.vehicle = sid, size, None
+
+class ParkingLot:
+    def __init__(self, floors):                   # floors: list of lists of Size
+        self.floors = [[Spot(f"F{f}-{i}", s) for i, s in enumerate(spots)] for f, spots in enumerate(floors)]
+        self.tickets, self.ids = {}, itertools.count(1)
+        self.lock = threading.Lock()
+
+    def park(self, vtype, now):
+        need = NEEDS[vtype]
+        with self.lock:                           # find + claim is one atomic step
+            spot = min((s for fl in self.floors for s in fl if s.vehicle is None and s.size >= need),
+                       key=lambda s: s.size, default=None)   # smallest spot that fits
+            if spot is None:
+                return None
+            spot.vehicle = vtype
+            tid = next(self.ids)
+            self.tickets[tid] = (spot, vtype, now)
+            return tid
+
+    def leave(self, tid, now):
+        with self.lock:
+            spot, vtype, start = self.tickets.pop(tid)   # KeyError = invalid/used ticket
+            spot.vehicle = None
+        hours = max(1, math.ceil((now - start) / 3600))
+        return hours * RATE[vtype]`},{k:'Edge cases',prompt:'What inputs or situations could break it?',hint:'Think about empty, full, duplicate, concurrent and invalid inputs.',solution:'Lot full; a car takes a large spot when medium ones are full (allowed?); a ticket used twice; two cars entering at once claiming the same spot; clock skew between entry and exit gates; lost ticket.'},{k:'Tests',prompt:'Write the test cases you would run (input → expected).',hint:'One happy path, one per edge case.',solution:'one medium spot + car → ticket; second car → None; truck with only medium spots → None; bike prefers small over large; leave after 61 minutes → 2 hours × rate; leave same ticket twice → error; 100 threads parking into 50 spots → exactly 50 tickets.'}]}]},
 
 {title:'Score and review',tab:'Review',mins:10,out:'Rubric + homework',blocks:[
  {t:'rubric',title:'LLD rubric',rows:[['Requirements','Asked sizes, types, pricing, fallback rules'],['Entities','Right classes, one responsibility each'],['Relationships','Correct has-a / is-a / uses'],['Patterns','Strategy/Factory used for a reason'],['Code','Runs; handles full lot and invalid ticket'],['Extension','New feature = new class, not edits everywhere']]},
- {t:'task',title:'Homework',items:['Add monthly passes: pass holders park free on their assigned level. Write the classes you would add and the one place you would change.']}]}
+ {t:'task',title:'Homework',items:['Add monthly passes: pass holders park free on their assigned level. Write the classes you would add and the one place you would change.']},
+ {t:'checkpoint',id:'s17cp',title:'Interview checkpoint',prompt:'"Design a parking lot system." (LLD round, 35 minutes)',steps:['Clarify floors, sizes, vehicle types, payment, displays','Identify classes and drop infrastructure','Assign responsibilities; ParkingLot as facade','Use strategies where rules vary (spot choice, pricing)','Write the park/leave interfaces','Walk through park and leave with an example','Make spot assignment atomic','Discuss extensions (reservations, EV charging, multiple lots)'],model:'See the lab solution: Spot/Floor/ParkingLot, SpotFinder and PricingPolicy strategies, Ticket, an atomic find-and-claim. Extensions plug in as new strategies or spot types.',followups:[['"Add electric-vehicle charging spots."','A Spot attribute or subclass + a SpotFinder rule; pricing adds charging time.'],['"Two entry gates."','Shared ParkingLot state with a lock (single process) or a conditional update in a database (many processes).']]},
+ {t:'recall',title:'Active recall',items:[['Why is ParkingLot a facade?','Callers use two simple methods; floors, spots and policies stay hidden behind it.'],['Where do strategies appear?','Choosing a spot and computing the price: both rules change independently.'],['How do you stop double assignment?','Find and claim the spot in one atomic step (a lock, or a conditional update).'],['What goes on a Ticket?','Ticket id, vehicle, spot, entry time.'],['Name two edge cases.','Lot full; ticket used twice; lost ticket; concurrent entries.']]},
+ {t:'summary',id:'s17sum',title:'Session summary',learned:['<b>Why the LLD loop works:</b> requirements → classes → responsibilities → interfaces → code','<b>When to use strategies:</b> rules that change independently','<b>When not to:</b> a rule that will never vary','<b>Trade-offs:</b> flexibility vs extra classes; lock granularity','<b>Interview questions:</b> spot allocation, pricing, concurrency, extensions'],explain:'Design the parking lot out loud in 10 minutes: classes, park/leave flow, and concurrency.'}]}
 ],
 labs:{
  parking(el,api){
