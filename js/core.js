@@ -2,7 +2,7 @@
    Loaded first. Everything lives on window.SDC; sessions still register through window.COURSE. */
 (function(){
 'use strict';
-window.COURSE={sessions:[],cases:[],blocks:{},labs:{},add(s){this.sessions.push(s)},addCase(c){this.cases.push(c)}};
+window.COURSE={sessions:[],cases:[],blocks:{},labs:{},add(s){this.sessions.push(s)},addDeep(id,m){const s=this.sessions.find(x=>x.id===id);if(s)s.modules.push(Object.assign({selfStudy:true,tab:'Deep dive',mins:45},m))},addCase(c){this.cases.push(c)}};
 const SDC=window.SDC=window.SDC||{};
 
 /* ---------- small helpers ---------- */

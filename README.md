@@ -25,6 +25,7 @@ Every 2-hour session has:
 - an **interview checkpoint**: answer in your own words first, then compare with a structured approach
 - **active-recall cards** and a **session summary** ("Can you explain this without notes?") that feed spaced revision
 - **teacher notes** at the end of each module
+- a self-study **Deep dive** tab that explains the whole topic from beginner to expert (🟢 Foundation → 🟡 Intermediate → 🔴 expert trade-offs, worked code and expert Q&A); the content lives in `sessions/deep/dNN.js`
 
 Course-wide pages: **Labs** (filter by 🟢 Foundation / 🟡 Intermediate / 🔴 Interview), **Case studies** (7 extra self-paced systems: YouTube, notification service, Google Drive, ticket booking, autocomplete, web crawler, payments), **Interview practice**, **Revision** (Leitner spaced repetition: 1, 3, 7, 16, 35 days) and **Progress** (completion counts and concept mastery).
 

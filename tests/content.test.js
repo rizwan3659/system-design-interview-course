@@ -9,6 +9,7 @@ global.matchMedia=()=>({matches:false});
 R('js/core.js');SDC.M=R('js/models.js');R('js/diagram.js');
 ['predict','decide','interview','recall','tasks','capacity','latency','scalelab','cachesim','queuesim','shardsim','replsim','ratelimit','consistency','builder','lld'].forEach(f=>R('js/components/'+f+'.js'));
 for(let i=1;i<=20;i++)R('sessions/s'+String(i).padStart(2,'0')+'.js');
+for(let i=1;i<=20;i++)R('sessions/deep/d'+String(i).padStart(2,'0')+'.js');
 R('cases/cases-a.js');R('cases/cases-b.js');R('js/pages.js');
 
 const known=new Set(Object.keys(COURSE.blocks).concat(['text','table','grid','code','task','cards','sort','mcq','reveal','flash','drill','rubric','checklist','notes','timer','stepper','arch','uml','lab','teacher']));
