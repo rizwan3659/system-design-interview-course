@@ -24,7 +24,10 @@ const step=n=>n<10?1:n<50?5:n<200?25:100;
 SDC.block('scalelab',(b,p,key,ses)=>{const cx=SDC.ctx(b,key,ses,'scalelab');const cfg=b.model||{};const steps=b.steps||[100,1000,10000,100000,1000000];
   const allow=b.allow||['api','lb','cache','replicas','queue','workers','shards','cdn','regions','resilient'],fails=b.fails||Object.keys(FAILS);
   let st=Object.assign({},DEF_ST,b.start||{},cx.get('st',{}));st.fail=Object.assign({},st.fail);let prev=null,msg=null,diag=cx.get('diag',{tries:0,ok:0}),asked=null,lastAnswered=null;
-  p.insertAdjacentHTML('beforeend',`${b.system?`<div class="think">${b.system}</div>`:''}<div class="sl-top"><label class="sl-traffic">Traffic: <b data-tv></b><input type="range" min="0" max="${steps.length-1}" step="1" data-ti aria-describedby="${key}-tl"></label><div class="sl-ticks" id="${key}-tl" aria-hidden="true">${steps.map(s=>`<span>${M().num(s)}</span>`).join('')}</div></div>
+  const scen=b.scenarios||[];let si=cx.get('sc',-1);
+  const taskHTML=()=>{const s=scen[si];if(!s)return '<p class="small muted">Pick a scenario: it loads a starting architecture, traffic level and failure. Read the task, diagnose from the metrics, change the design, then open the hint and the answer.</p>';
+    return `<p><span class="tag">Scenario ${si+1} of ${scen.length}</span> <b>${s.l}</b></p><p>${s.task}</p>${s.hint?`<details class="whynot"><summary>Hint</summary><p class="small">${s.hint}</p></details>`:''}${s.answer?`<details class="whynot"><summary>Answer and numbers</summary><div class="small prose">${s.answer}</div></details>`:''}<div class="row" style="gap:6px"><button class="btn small" data-screset>Reload this scenario</button>${si<scen.length-1?'<button class="btn small" data-scnext>Next scenario →</button>':''}</div>`};
+  p.insertAdjacentHTML('beforeend',`${b.system?`<div class="think">${b.system}</div>`:''}${scen.length?`<div class="sl-scen col" style="gap:8px"><h4>Guided scenarios</h4><div class="row" style="gap:6px;flex-wrap:wrap" data-scl>${scen.map((s,i)=>`<button class="btn small" data-sc="${i}" aria-pressed="${i===si}" title="${esc(s.l)}">${i+1}. ${esc(s.short||s.l)}</button>`).join('')}</div><div class="think" data-task aria-live="polite">${taskHTML()}</div></div>`:''}<div class="sl-top"><label class="sl-traffic">Traffic: <b data-tv></b><input type="range" min="0" max="${steps.length-1}" step="1" data-ti aria-describedby="${key}-tl"></label><div class="sl-ticks" id="${key}-tl" aria-hidden="true">${steps.map(s=>`<span>${M().num(s)}</span>`).join('')}</div></div>
     <div class="sl-grid"><div class="col" style="gap:10px;min-width:0"><div class="svgbox" data-dg></div><p class="sr-only" data-sr aria-live="polite"></p><div data-metrics></div></div>
     <div class="col sl-side" style="gap:12px"><div><h4>Change the architecture</h4><div class="sl-ctl" data-ctl></div></div><div><h4>Break something</h4><div class="fails" data-fails>${fails.map(f=>`<button class="btn danger small" data-fail="${f}" aria-pressed="false">${FAILS[f]}</button>`).join('')}<button class="btn small" data-clear>Clear failures</button></div></div></div></div>
     <div data-diag></div><div class="outcome" data-out aria-live="polite"></div>
@@ -96,6 +99,11 @@ SDC.block('scalelab',(b,p,key,ses)=>{const cx=SDC.ctx(b,key,ses,'scalelab');cons
       const m=prev;const tier=m.tiers.find(x=>x[0]===dx.dataset.dx);
       fb.innerHTML=ok?`<span class="tag green">Correct</span> ${m.bottleneck.label} is at ${M().pct(m.bottleneck.u)}. ${HINT[asked]||''}`:`<span class="tag red">Not this one</span> ${tier[1]} is at ${M().pct(tier[2])}: adding capacity there will not help. Look for the highest utilisation.`;
       if(ok){lastAnswered=st.ti+'|'+JSON.stringify(st.fail);p.querySelectorAll('[data-dx]').forEach(x=>x.disabled=true)}}
+    const sc=e.target.closest('[data-sc]'),scr=e.target.closest('[data-screset]'),scn=e.target.closest('[data-scnext]');
+    if(sc||scr||scn){if(sc)si=+sc.dataset.sc;else if(scn)si=Math.min(scen.length-1,si+1);const S=scen[si];
+      st=Object.assign({},DEF_ST,S.st,{fail:Object.assign({},S.st.fail||{})});msg=null;lastAnswered=null;prev=null;cx.set('sc',si);
+      p.querySelectorAll('[data-sc]').forEach(x=>x.setAttribute('aria-pressed',String(+x.dataset.sc===si)));p.querySelector('[data-task]').innerHTML=taskHTML();draw();
+      if(!sc)p.querySelector('[data-task]').scrollIntoView({block:'nearest'})}
     if(pre){const P=(b.presets||DEFAULT_PRESETS)[+pre.dataset.pre];st=Object.assign({},DEF_ST,P.st,{fail:{}});msg=`<p><b>Reference: ${esc(P.l)}.</b> ${P.why||''}</p>`;lastAnswered=null;draw()}});
   draw()},{phase:'experiment',kind:'lab'});
 
